@@ -1,0 +1,9 @@
+{
+  "Parameters": {
+    "BucketName": "data-receive-test",
+    "ToBucketName":"data-send-test",
+    "FunctionName":"data-send-function",
+    "AccessKey":"AccessKey-test",
+    "SecretKey":"SecretKey-test"
+  }
+}

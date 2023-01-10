@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: data-receive-test
+
+  ToBucketName:
+    Type: String
+    Default: data-send-test
+  
+  ToBucketPath:
+    Type: String
+    Default: data
+
+  FunctionName:
+    Type: String
+    Default: data-send-function
+
+  AccessKey:
+    Type: String
+
+  SecretKey:
+    Type: String
+
+Resources:
+
+
+
+  ToBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ToBucketName}
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-function-execution-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt  LambdaExecutionRole.Arn
+      FunctionName: !Ref FunctionName
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Environment: 
+        Variables:
+          ACCESS_KEY: !Ref AccessKey
+          SECRET_KEY: !Ref SecretKey
+          TO_BUCKET: !Ref ToBucketName
+          TO_PATH:   !Ref ToBucketPath
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+    
+          TO_BUCKET=os.environ['TO_BUCKET']
+          TO_KEY=os.environ['TO_PATH']
+          ACCESS_KEY=os.environ['ACCESS_KEY']
+          SECRET_KEY=os.environ['SECRET_KEY']
+          
+          def exec_copy(event):
+            bucket_name = event['Records'][0]['s3']['bucket']['name']
+            from_key = event['Records'][0]['s3']['object']['key']
+            print(bucket_name)
+            print(from_key)
+            s3 = boto3.client('s3')
+            result = s3.copy_object(
+              Bucket=TO_BUCKET,
+              Key=TO_KEY,
+              CopySource={'Bucket': bucket_name, 'Key': from_key}
+            )
+            print(result)
+
+          def lambda_handler(event, context):
+            print(TO_BUCKET)
+            print(TO_KEY)
+            print(ACCESS_KEY)
+            print(SECRET_KEY)
+            exec_copy(event)
+            return 200
+            
+  TriggerLambdaPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt lambda.Arn 
+      Principal: "s3.amazonaws.com"
+      SourceArn: !Join 
+                  - ""
+                  - - "arn:aws:s3:::"
+                    - !Ref BucketName
+
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:Put"
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: data/
+                  - Name: suffix
+                    Value: txt
+            Function: !GetAtt lambda.Arn
+
