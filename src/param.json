@@ -1,9 +1,9 @@
 {
   "Parameters": {
     "BucketName": "data-receive-test",
-    "ToBucketName":"data-send-test",
+    "DestBucket":"transfer-send-test",
+    "DestBucketPrefix":"data/",
     "FunctionName":"data-send-function",
-    "AccessKey":"AccessKey-test",
-    "SecretKey":"SecretKey-test"
+    "SampleSecretName":"sample"
   }
 }

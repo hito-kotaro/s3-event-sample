@@ -1,0 +1,177 @@
+#　結論
+
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: data-receive-test
+  
+  DestBucket:
+    Type: String
+    Default: data-send-test
+  
+  DestBucketPrefix:
+    Type: String
+    Default: data
+  
+  FunctionName:
+    Type: String
+    Default: data-send-function
+
+  AccessKey:
+    Type: String
+
+  SampleSecretName:
+    Type: String
+
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:Put"
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: data/
+                  - Name: suffix
+                    Value: txt
+            Function: !GetAtt Lambda.Arn
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-function-execution-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+
+  
+  #CFnでEvent通知を作成する場合はLambda側にこのリソースを作る必要がある
+  TriggerLambdaPermission:
+      Type: "AWS::Lambda::Permission"
+      Properties:
+        Action: "lambda:InvokeFunction"
+        FunctionName: !GetAtt Lambda.Arn 
+        Principal: "s3.amazonaws.com"
+        SourceArn: !Join 
+                    - ""
+                    - - "arn:aws:s3:::"
+                      - !Ref BucketName
+
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt  LambdaExecutionRole.Arn
+      FunctionName: !Ref FunctionName
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Environment: 
+        Variables:
+          DEST_BUCKET: !Ref DestBucket
+          DEST_PATH:   !Ref DestBucketPrefix
+          SAMPLE_SECRET_NAME: !Ref SampleSecretName
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import json
+          from botocore.exceptions import ClientError
+    
+          DEST_BUCKET=os.environ['DEST_BUCKET']
+          DEST_PATH=os.environ['DEST_PATH']
+          SECRET_NAME=os.environ['SAMPLE_SECRET_NAME']
+          
+          def get_secret():
+              secret_name = "sample"
+              session = boto3.session.Session()
+              client = session.client(
+                  service_name='secretsmanager',
+              )
+
+              try:
+                  print('getSecret')
+                  get_secret_value_response = client.get_secret_value(
+                      SecretId=secret_name
+                  )
+                  print('get success')
+
+              except ClientError as e:
+                  raise e
+              secrets = get_secret_value_response['SecretString']
+              return json.loads(secrets)
+
+
+          def exec_copy(event):
+            bucket_name = event['Records'][0]['s3']['bucket']['name']
+            from_key = event['Records'][0]['s3']['object']['key']
+            print(bucket_name)
+            print(from_key)
+            secrets = get_secret()
+            access_key = secrets['access']
+            secret_key = secrets['secret']
+            s3_with_profile = boto3.client('s3',aws_access_key_id=access_key,aws_secret_access_key=secret_key)
+            s3 = boto3.client('s3')
+
+            # result = s3.copy_object(
+            #   Bucket=DEST_BUCKET,
+            #   Key=DEST_PATH,
+            #   CopySource={'Bucket': bucket_name, 'Key': from_key}
+            # )
+            # print('---s3---')
+            # print(result)
+
+            result2 = s3_with_profile.copy_object(
+              Bucket=DEST_BUCKET,
+              Key=DEST_PATH,
+              CopySource={'Bucket': bucket_name, 'Key': from_key}
+            )
+            print('---s3_with_profile---')
+            print(result2)
+
+          def lambda_handler(event, context):
+            print(DEST_BUCKET)
+            print(DEST_PATH)
+            print(ACCESS_KEY)
+            exec_copy(event)
+            secret = get_secret()
+            print(secret)
+            return 200
+
+  # BucketPolicy1:
+  #   Type: 'AWS::S3::BucketPolicy'
+  #   Properties:
+  #     Bucket: !Ref Bucket
+  #     PolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Action:
+  #             - 's3:*'
+  #           Sid: BucketPolicy
+  #           Effect: Allow
+  #           Resource: 
+  #             - !Sub 'arn:aws:s3:::${Bucket}'
+  #             - !Sub 'arn:aws:s3:::${Bucket}/*'
+  #           Principal: 
+  #             AWS: 
+  #               - !Sub 'arn:aws:iam::296066267476:user/admin'

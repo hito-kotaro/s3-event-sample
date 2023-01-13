@@ -1,4 +1,4 @@
-TEMPLATE_FILE = src/cloudformation/root.yml
+TEMPLATE_FILE = ./cloudformation-template.yml
 STACK_NAME = data-transfer-test
 BUCKET = cfn-build-objects
 PROFILE = tohi.work-admin
@@ -13,9 +13,9 @@ deploy:
 	--stack-name $(STACK_NAME) \
 	--region ap-northeast-1 --profile $(PROFILE) \
 	--capabilities CAPABILITY_NAMED_IAM \
-	--parameter-overrides `cat ${PWD}/src/cloudformation/param.json | jq -r '.Parameters | to_entries | map("\(.key)=\(.value|tostring)") | .[]' | tr '\n' ' ' | awk '{print}'`
+	--parameter-overrides `cat ./param.json | jq -r '.Parameters | to_entries | map("\(.key)=\(.value|tostring)") | .[]' | tr '\n' ' ' | awk '{print}'`
 
-infra: package deploy
+all: package deploy
 
 confirm:
 	@read -p "Delete $(STACK_NAME) ?[y/N]: " ans; \
@@ -30,4 +30,4 @@ delete: confirm
 	--profile $(PROFILE)\
 
 test:
-	aws s3 cp  ./data/sample.txt s3://data-receive-test/data/ --profile tohi.work-admin
+	aws s3 cp  ../data/sample.txt s3://data-receive-test/data/ --profile tohi.work-admin

@@ -55,6 +55,7 @@ Resources:
           Action: sts:AssumeRole
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
   TriggerLambdaPermission:
     Type: AWS::Lambda::Permission
@@ -109,4 +110,4 @@ Resources:
           \ bucket_name, 'Key': from_key}\n  )\n  print('---s3_with_profile---')\n\
           \  print(result2)\n\ndef lambda_handler(event, context):\n  print(DEST_BUCKET)\n\
           \  print(DEST_PATH)\n  print(ACCESS_KEY)\n  exec_copy(event)\n  secret =\
-          \ get_secret()\n  print(secret)\n  return 200\n  "
+          \ get_secret()\n  print(secret)\n  return 200\n"
